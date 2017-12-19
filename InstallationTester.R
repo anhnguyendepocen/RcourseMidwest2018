@@ -31,3 +31,8 @@ aictab(list(nls1,nls2),modnames=c("omega","ultimate full"))
 library(minpack.lm)
 nls3 <- nlsLM(tl~Linf*(1-exp(-K*(age-t0))),data=SpotVA1,
               start=list(Linf=16,K=0.22,t0=-2))
+
+## Test captioner
+library(captioner)
+figs <- captioner(prefix="Figure")
+figs(name="Histogram","Length frequency histogram for Walleye captured from Escanaba Lake in 2014.")
