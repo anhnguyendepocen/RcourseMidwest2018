@@ -1,0 +1,464 @@
+---
+title: "Escanaba Lake Walleye Assignments"
+output: 
+  pdf_document: 
+    number_sections: yes
+---
+
+```{r setup, include=FALSE}
+show1 <- FALSE
+show2 <- ifelse(show1,'markup','hide')
+show3 <- ifelse(show1,'asis','hide')
+knitr::knit_hooks$set(par1 = function(before, options, envir) {
+  if (before) par(mar=c(3.5,3.5,1,1),mgp=c(2.1,0.4,0),tcl=-0.2)
+})
+knitr::opts_chunk$set(echo=show1, eval=show1, results=show2,
+                      fig.show=show3, warning=show1, error=show1,
+                      prompt=show1, comment="",
+                      fig.width=3,fig.height=3,par1=TRUE)
+set.seed(780349234)
+options(show.signif.stars=FALSE)
+```
+
+
+
+# Initial Preparation, Get Data, and Simple Summaries
+* Load all necessary packages
+```{r message=FALSE}
+library(FSA)
+library(nlstools)
+library(AICcmodavg)
+library(dplyr)
+library(magrittr)
+```
+
+* Load the data in `WAE_Escanaba_2011_2014.csv` into an R data.frame. Examine the contents of the data.frame.
+```{r}
+wae <- read.csv("WAE_Escanaba_2011_14.csv")
+str(wae)
+headtail(wae)
+```
+
+* Modify the data.frame in the following ways:
+    * Remove the `Lake` and `Assessment` variables (they do not vary and will not be used in any analyses ... this simply simplifies the data.frame),
+    * Rename the `inches` and `pounds` variables (to something better),
+    * Change sex codes to words (note that 1=male, 2=female, 3=unknown),
+    * Add 1-in length bins variable,
+    * Add logs of the length and weight variables, and
+    * Sort individuals by year, then age, then length
+```{r}
+wae %<>% select(-Lake,-Assessment) %>%
+  rename(len=inches,wt=pounds) %>%
+  mutate(sex=mapvalues(sex,from=1:3,to=c("male","female","unknown")),
+         sex=factor(sex),
+         lcat=lencat(len,w=1),
+         loglen=log(len),logwt=log(wt)) %>%
+  arrange(year,age,len)
+headtail(wae)
+```
+
+* Produce some simple summaries that could be used to answer the following questions:
+    * What is the mean length of all Walleye?
+    * What is the standard deviation of the length of Walleye in each year?
+    * How many fish were captured in each year?
+    * How many fish of each sex were captured in each year?
+    * [*Bonus*] What is the maximum length of Walleye for each sex in each year?
+```{r}
+Summarize(~len,data=wae,digits=1)
+Summarize(len~year,data=wae,digits=1)
+xtabs(~year,data=wae)
+xtabs(~sex+year,data=wae)
+Summarize(len~sex:year,data=wae,digits=1)
+```
+
+
+
+# Create an Age-Length Key
+* Create a new data.frame of aged female Walleye captured in 2014. [*Check your work*]
+```{r}
+wae14F.aged <- filterD(wae,sex=="female",year==2014,!is.na(age))
+headtail(wae14F.aged)
+```
+
+* Construct an age-length key (by 1-in length categories) for female Walleye captured in 2014.
+```{r}
+wae14F.raw <- xtabs(~lcat+age,data=wae14F.aged)
+wae14F.alk <- prop.table(wae14F.raw,margin=1)
+```
+
+* Examine the age-length key (both as a table and as a plot). Do you see any potential issues with this age-length key.
+```{r fig.width=4}
+round(wae14F.alk*100,1)
+alkPlot(wae14F.alk)
+```
+
+* Repeat the three previous steps for aged male Walleye captured in 2014.
+```{r fig.width=4}
+wae14M.aged <- filterD(wae,sex=="male",year==2014,!is.na(age))
+wae14M.raw <- xtabs(~lcat+age,data=wae14M.aged)
+wae14M.alk <- prop.table(wae14M.raw,margin=1)
+round(wae14M.alk*100,1)
+alkPlot(wae14M.alk)
+```
+
+
+
+# Apply Age-Length Key (assign ages to unaged fish)
+* Create a new data.frame of unaged female Walleye captured in 2014. [*Check your work*]
+```{r}
+wae14F.unaged <- filterD(wae,sex=="female",year==2014,is.na(age))
+headtail(wae14F.unaged)
+```
+
+* Use the age-length key for female Walleye captured in 2014 to assign ages to all fish in this new data.frame.
+```{r}
+wae14F.unaged <- alkIndivAge(wae14F.alk,age~len,data=wae14F.unaged)
+headtail(wae14F.unaged)
+```
+
+* Create a data.frame that contains ALL (now with ages) female Walleye captured in 2014. 
+```{r}
+wae14F <- rbind(wae14F.aged,wae14F.unaged)
+headtail(wae14F)
+```
+
+* Repeat all of the steps above for male Walleye captured in 2014.
+```{r}
+wae14M.unaged <- filterD(wae,sex=="male",year==2014,is.na(age))
+wae14M.unaged <- alkIndivAge(wae14M.alk,age~len,data=wae14M.unaged)
+wae14M <- rbind(wae14M.aged,wae14M.unaged)
+```
+
+* Combine the female and male data.frames from above into one data.frame that contains all (sexed) Walleye captured in 2014 (now with ages).
+```{r}
+wae14 <- rbind(wae14F,wae14M)
+```
+
+
+
+# Estimate Mortality Rate
+* Create a data.frame that contains the frequency (and log frequency) at age of female Walleye captured in 2014.
+```{r}
+wae14F.af <- group_by(wae14F,age) %>%
+  summarise(freq=n()) %>%
+  mutate(logfreq=log(freq)) %>%
+  as.data.frame()
+wae14F.af
+```
+
+* Construct a plot and determine which ages define the "descending limb."
+```{r}
+plot(logfreq~age,data=wae14F.af)
+```
+
+* Estimate (point and 95% confidence interval) Z (and A) using a weighted linear regression, but not using `catchCurve()`.
+```{r}
+wae14F.af.rec <- filterD(wae14F.af,age>=7,age<15)
+wae14F.cc1 <- lm(logfreq~age,data=wae14F.af.rec)
+wae14F.af.rec %<>% mutate(wts=predict(wae14F.cc1))
+wae14F.cc2 <- lm(logfreq~age,data=wae14F.af.rec,weights=wts)
+cbind(Est=coef(wae14F.cc2),confint(wae14F.cc2))
+```
+
+* Estimate (point and 95% confidence interval) Z (and A) using a weighted linear regression, using `catchCurve()`.
+```{r}
+wae14F.cc1 <- catchCurve(freq~age,data=wae14F.af,
+                         ages2use=7:13,weighted=TRUE)
+cbind(Est=coef(wae14F.cc1),confint(wae14F.cc1))
+plot(wae14F.cc1)
+```
+
+* [*Bonus*] What impact does the low catch of age-11 fish have on the estimate of Z (and A)?
+```{r}
+wae14F.cc2 <- catchCurve(freq~age,data=wae14F.af,
+                         ages2use=c(7:10,12),weighted=TRUE)
+cbind(Est=coef(wae14F.cc2),confint(wae14F.cc2))
+```
+
+* Estimate (point and 95% confidence interval) Z (and A) for male Walleye captured in 2014 using a weighted linear regression.
+```{r}
+wae14M.af <- group_by(wae14M,age) %>%
+  summarise(freq=n()) %>%
+  mutate(logfreq=log(freq)) %>%
+  as.data.frame()
+wae14M.af
+wae14M.cc1 <- catchCurve(freq~age,data=wae14M.af,
+                         ages2use=4:12,weighted=TRUE)
+cbind(Est=coef(wae14M.cc1),confint(wae14M.cc1))
+plot(wae14M.cc1)
+```
+
+
+
+# Compare Mortality Rates
+* Create a data.frame that contains the frequency (and log frequency) by age of Walleye captured in 2014 separated by sex.
+```{r}
+ALL.af <- group_by(wae14,sex,age) %>%
+  summarise(freq=n()) %>%
+  mutate(logfreq=log(freq)) %>%
+  as.data.frame()
+ALL.af
+```
+
+* Fit a weighted indicator variable regression to the descending limbs so that Z (i.e., the slopes) can be statistically compared between sexes. [*Note that this will require a careful filtering of the summaries produced above to isolate both descending limbs.*]
+```{r}
+ALL.af.rec <- filterD(ALL.af,(age>=4 & age<14 & sex=="male") | 
+                             (age>=7 & age<13 & sex=="female"))
+ALL.af.rec
+ALL.cc1 <- lm(logfreq~age*sex,data=ALL.af.rec)
+ALL.af.rec %<>% mutate(wts=predict(ALL.cc1))
+ALL.cc2 <- lm(logfreq~age*sex,data=ALL.af.rec,weights=wts)
+cbind(Est=coef(ALL.cc2),confint(ALL.cc2))
+```
+
+* Statistically test if the slopes (i.e., Z) differ between the sexes.
+```{r}
+anova(ALL.cc2)
+```
+
+* Construct a "fancy" plot that demonstrates the catch-curves both sexes.
+```{r}
+clrs <- c("black","blue")
+plot(logfreq~age,data=ALL.af,col=clrs[as.numeric(sex)],
+     xlab="Age (years)",ylab="log(Frequency of Fish)")
+points(logfreq~age,data=filterD(ALL.af,sex=="female",age>=7,age<14),
+       pch=19,col=clrs[1])
+tmp <- c(7,13)
+lines(tmp,predict(ALL.cc2,data.frame(age=tmp,sex="female")),
+      col=clrs[1],lwd=2)
+points(logfreq~age,data=filterD(ALL.af,sex=="male",age>=4,age<13),
+       pch=19,col=clrs[2])
+tmp <- c(4,12)
+lines(tmp,predict(ALL.cc2,data.frame(age=tmp,sex="male")),
+      col=clrs[2],lwd=2)
+legend("topright",levels(wae14$sex),col=clrs,pch=19,lwd=2,
+       bty="n",cex=0.8)
+```
+
+
+
+#  Fit Growth Model
+* Create a plot of length versus age for all male Walleye captured in 2014. Comment on whether you think there will be any "problems" with fitting the von Bertalanffy growth function (VBGF).
+```{r}
+xlbl <- "Age (yrs)"
+ylbl <- "Total Length (in)"
+clrs2 <- col2rgbt(clrs,1/10)
+plot(len~age,data=wae14M,pch=19,col=clrs2[2],xlab=xlbl,ylab=ylbl)
+```
+
+* Fit the VBGF for male Walleye captured in 2014. Comment on assumptions from the residual plot.
+```{r fig.width=6}
+vb <- vbFuns("Typical")
+wae14M.vbs <- vbStarts(len~age,data=wae14M,type="Typical")
+wae14M.vbf <- nls(len~vb(age,Linf,K,t0),data=wae14M,
+                  start=wae14M.vbs)
+residPlot(wae14M.vbf)
+```
+
+* Comment on the correlations among parameter estimates.
+```{r}
+summary(wae14M.vbf,correlation=TRUE)
+```
+
+* Construct profile likelihood confidence intervals for each parameter.
+```{r}
+( wae14M.vbc <- coef(wae14M.vbf) )
+cbind(Est=wae14M.vbc,confint(wae14M.vbf))
+```
+
+* Construct bootstrapped confidence intervals for each parameter.
+```{r}
+wae14M.vbb <- nlsBoot(wae14M.vbf,niter=999)
+cbind(EST=wae14M.vbc,confint(wae14M.vbb))
+```
+
+* Predict, with a bootstrapped confidence interval, the mean length for a chosen age (you choose the age).
+```{r}
+ageX <- 9
+wae14M.vbbp <- apply(wae14M.vbb$coefboot,MARGIN=1,FUN=vb,t=ageX)
+c(pred=predict(wae14M.vbf,data.frame(age=ageX)),
+  quantile(wae14M.vbbp,c(0.025,0.975)))
+```
+
+* Plot the best-fit VBGF over the observed data.
+```{r}
+plot(len~age,data=wae14M,xlab=xlbl,ylab=ylbl,
+     pch=19,col=clrs2[2])
+curve(vb(x,wae14M.vbc),from=3,to=15,n=500,
+      lwd=2,col=clrs[2],add=TRUE)
+```
+
+* Repeat the above for female Walleye captured in 2014.
+```{r fig.width=6}
+wae14F.vbs <- vbStarts(len~age,data=wae14F,type="Typical")
+wae14F.vbf <- nls(len~vb(age,Linf,K,t0),data=wae14F,
+                  start=wae14F.vbs)
+residPlot(wae14F.vbf)
+summary(wae14F.vbf,correlation=TRUE)
+( wae14F.vbc <- coef(wae14F.vbf) )
+wae14F.vbb <- nlsBoot(wae14F.vbf,niter=999)
+cbind(Est=wae14F.vbc,confint(wae14F.vbb))
+wae14F.vbbp <- apply(wae14F.vbb$coefboot,MARGIN=1,FUN=vb,t=ageX)
+c(pred=predict(wae14F.vbf,data.frame(age=ageX)),
+  quantile(wae14F.vbbp,c(0.025,0.975)))
+```
+```{r}
+plot(len~age,data=wae14F,xlab=xlbl,ylab=ylbl,
+     pch=19,col=clrs2[1])
+curve(vb(x,wae14F.vbc),from=4,to=15,n=500,
+      lwd=2,col=clrs[1],add=TRUE)
+```
+
+
+
+#  Compare Growth Model Parameters
+* Fit the ulimated full model to all male and female Walleye captured in 2014. Visually assess the assumptions.
+```{r fig.width=6}
+svOm <- vbStarts(len~age,data=wae14)
+svLKt <- Map(rep,svOm,c(2,2,2))
+vbLKt <- len~Linf[sex]*(1-exp(-K[sex]*(age-t0[sex])))
+fitLKt <- nls(vbLKt,data=wae14,start=svLKt)
+residPlot(fitLKt,col=col2rgbt("black",1/3))
+```
+
+* Fit the ultimate simple model and statistically compare it to the ultimate full model to determine if at least some of the VBGF parameters differ.
+```{r}
+vbOm <- len~Linf*(1-exp(-K*(age-t0)))
+fitOm <- nls(vbOm,data=wae14,start=svOm)
+extraSS(fitOm,sim.name="{Omega}",
+        com=fitLKt,com.name="{Linf,K,t0}")
+lrt(fitOm,sim.name="{Omega}",
+    com=fitLKt,com.name="{Linf,K,t0}")
+```
+
+* Use model reduction methods to find the most parsimonious model. Interpret from this model which parameters differ between the sexes.
+```{r}
+vbLK <- len~Linf[sex]*(1-exp(-K[sex]*(age-t0)))
+svLK <- Map(rep,svOm,c(2,2,1))
+fitLK <- nls(vbLK,data=wae14,start=svLK)
+vbLt <- len~Linf[sex]*(1-exp(-K*(age-t0[sex])))
+svLt <- Map(rep,svOm,c(2,1,2))
+fitLt <- nls(vbLt,data=wae14,start=svLt)
+vbKt <- len~Linf*(1-exp(-K[sex]*(age-t0[sex])))
+svKt <- Map(rep,svOm,c(1,2,2))
+fitKt <- nls(vbKt,data=wae14,start=svKt)
+extraSS(fitLK,fitLt,fitKt,
+        sim.names=c("{Linf,K}","{Linf,t0}","{K,t0}"),
+        com=fitLKt,com.name="{Linf,K,t0}")
+
+vbL <- len~Linf[sex]*(1-exp(-K*(age-t0)))
+( svL <- Map(rep,svOm,c(2,1,1)) )
+fitL <- nls(vbL,data=wae14,start=svL)
+vbK <- len~Linf*(1-exp(-K[sex]*(age-t0)))
+svK <- Map(rep,svOm,c(1,2,1))
+fitK <- nls(vbK,data=wae14,start=svK,trace=TRUE)
+extraSS(fitL,sim.names=c("{Linf}"),
+        com=fitLK,com.name="{Linf,K}")
+
+vbt <- len~Linf*(1-exp(-K*(age-t0[sex])))
+svt <- Map(rep,svOm,c(1,1,2))
+fitt <- nls(vbt,data=wae14,start=svt,trace=TRUE)
+```
+
+* Use AIC to identify the most supported model(s).
+```{r}
+ms <- list(fitOm,fitL,fitLK,fitLt,fitKt,fitLKt)
+mnames <- c("{Omega}","{Linf}","{Linf,K}",
+            "{Linf,t0}","{K,t0}","{Linf,K,t0}")
+aictab(ms,mnames)
+```
+
+* Plot the best-fit VBGFs (according to the most parsimonious model or most supported models).
+```{r}
+( cfLK <- coef(fitLK) )
+jit <- 0.05
+plot(len~I(age-jit),data=filterD(wae14,sex=="female"),
+     pch=19,col=clrs2[1],xlab=xlbl,ylab=ylbl,
+     ylim=c(12,25),xlim=c(3,15))
+points(len~I(age+jit),data=filterD(wae14,sex=="male"),
+       pch=19,col=clrs2[2])
+curve(vb(x,cfLK[c("Linf1","K1","t0")]),from=3,to=15,
+      add=TRUE,col=clrs[1],lwd=2)
+curve(vb(x,cfLK[c("Linf2","K2","t0")]),from=3,to=15,
+      add=TRUE,col=clrs[2],lwd=2)
+legend("topleft",levels(wae14$sex),col=clrs,pch=19,
+       lwd=2,bty="n",cex=0.8)
+cfLKt <- coef(fitLKt)
+curve(vb(x,cfLKt[c("Linf1","K1","t01")]),from=3,to=15,
+      add=TRUE,col=clrs[1],lwd=2,lty=2)
+curve(vb(x,cfLKt[c("Linf2","K2","t02")]),from=3,to=15,
+      add=TRUE,col=clrs[2],lwd=2,lty=2)
+```
+
+
+
+# Compute Weight-Length Relationship
+* Fit the weight-length relationship to male Walleye captured in 2014.
+```{r}
+wae14M.lw <- lm(logwt~loglen,data=wae14M)
+cbind(Est=coef(wae14M.lw),confint(wae14M.lw))
+```
+
+* Predict the weight for a fish with a chosen length (you choose the length).
+```{r}
+chLen <- 20
+exp(predict(wae14M.lw,data.frame(loglen=log(chLen)),
+            interval="prediction"))
+```
+
+* Construct a plot (with a prediction band) that demonstrates the model fit.
+```{r}
+clrs2 <- col2rgbt(clrs,1/3)
+lens <- seq(8,25,length.out=100)
+wae14M.pwt <- exp(predict(wae14M.lw,data.frame(loglen=log(lens)),
+                          interval="prediction"))
+plot(wt~len,data=wae14M,pch=19,col=clrs2[2],
+     xlab="Total Length (in)",ylab="Weight (lbs)")
+lines(wae14M.pwt[,"fit"]~lens,lwd=2,col=clrs[2])
+lines(wae14M.pwt[,"lwr"]~lens,lwd=2,lty=2,col=clrs[2])
+lines(wae14M.pwt[,"upr"]~lens,lwd=2,lty=2,col=clrs[2])
+```
+
+* Repeat the above analysis for female Walleye captured in 2014.
+```{r}
+wae14M.lw <- lm(logwt~loglen,data=wae14M)
+cbind(Est=coef(wae14M.lw),confint(wae14M.lw))
+
+wae14M.pwt <- exp(predict(wae14M.lw,data.frame(loglen=log(lens)),
+                          interval="prediction"))
+plot(wt~len,data=wae14M,pch=19,col=clrs2[1],
+     xlab="Total Length (in)",ylab="Weight (lbs)")
+lines(wae14M.pwt[,"fit"]~lens,lwd=2,col=clrs[1])
+lines(wae14M.pwt[,"lwr"]~lens,lwd=2,lty=2,col=clrs[1])
+lines(wae14M.pwt[,"upr"]~lens,lwd=2,lty=2,col=clrs[1])
+```
+
+
+
+# Compare Weight-Length Model Parameters
+* Statistically compare the weight-length relationships between male and female Walleye captured in 2014.
+```{r}
+ALL.lw <- lm(logwt~loglen*sex,data=wae14)
+anova(ALL.lw)
+cbind(Est=coef(ALL.lw),confint(ALL.lw))
+```
+
+* Construct a plot that demonstrates the model fit.
+```{r}
+plot(wt~len,data=wae14,pch=19,col=clrs2[sex],
+     xlab="Total Length (in.)",ylab="Weight (lbs)")
+f.pwt <- exp(predict(ALL.lw,data.frame(loglen=log(lens),sex="female"),
+                     interval="prediction"))
+lines(f.pwt[,"fit"]~lens,lwd=2,col=clrs[1])
+lines(f.pwt[,"lwr"]~lens,lwd=1,lty=2,col=clrs[1])
+lines(f.pwt[,"upr"]~lens,lwd=1,lty=2,col=clrs[1])
+m.pwt <- exp(predict(ALL.lw,data.frame(loglen=log(lens),sex="male"),
+                     interval="prediction"))
+lines(m.pwt[,"fit"]~lens,lwd=2,col=clrs[2])
+lines(m.pwt[,"lwr"]~lens,lwd=1,lty=2,col=clrs[2])
+lines(m.pwt[,"upr"]~lens,lwd=1,lty=2,col=clrs[2])
+```
+```{r fig.height=4, fig.width=4}
+lwCompPreds(ALL.lw,lens=c(12,16,20,24))
+```
+
