@@ -1,0 +1,52 @@
+---
+title: "Reproducible Report Example"
+author: "Derek H. Ogle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  pdf_document
+---
+
+```{r setup, include=FALSE}
+YEAR <- 2014
+knitr::knit_hooks$set(par1 = function(before, options, envir) {
+  if (before) par(mar=c(3.5,3.5,1,1),mgp=c(2.1,0.4,0),tcl=-0.2)
+})
+knitr::opts_chunk$set(echo=FALSE, fig.width=4, fig.height=4, par1=TRUE)
+library(FSA)
+library(dplyr)
+library(captioner)
+figs <- captioner(prefix="Figure")
+```
+```{r getData}
+wae <- read.csv("WAE_Escanaba_2011_14.csv") %>%
+  select(-Lake,-Assessment) %>%
+  rename(len=inches,wt=pounds) %>%
+  mutate(sex=mapvalues(sex,from=1:3,to=c("male","female","unknown")),
+         sex=factor(sex),
+         lcat=lencat(len,w=1),
+         loglen=log(len),logwt=log(wt)) %>%
+  filterD(year==YEAR)
+```
+
+# Introduction
+Blah-Blah-Blah
+
+# Findings
+```{r}
+ttl <- nrow(wae)
+sex <- xtabs(~sex,data=wae)
+slen <- Summarize(~len,data=wae)
+rcum <- rcumsum(xtabs(~lcat,data=wae))
+rcump <- rcum/ttl*100
+```
+
+A total of `r ttl` Walleye were captured in `r YEAR`, including `r sex[["female"]]` female, `r sex[["male"]]` male, and `r sex[["unknown"]]` unknown sex individuals. The length distribution was right skewed (`r figs("Histogram",display="cite")`) with a mean length of `r formatC(slen[["mean"]],format="f",digits=1)` inches, `r formatC(rcump[["14"]],format="f",digits=1)`% 14 inches or larger, and `r formatC(rcump[["20"]],format="f",digits=1)`% 20 inches or larger.
+
+```{r results='hide'}
+figs(name="Histogram",paste0("Length frequency histogram for Walleye captured from Escanaba Lake in ",YEAR,"."))
+hist(~len,data=wae,w=0.5,xlab="Total Length (inches)",
+     ylab="Number of Walleye")
+```
+
+`r figs("Histogram")`
+
