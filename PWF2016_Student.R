@@ -3,8 +3,7 @@
 ##  Initial Preparation
 ##
 ########################################################################
-# Clear console and global environment
-rm(list = ls())
+# Clear console
 cat("\014")     # or ctrl-L in RStudio
 # Load packages
 library(FSA)
@@ -22,14 +21,13 @@ library(magrittr)
 ##
 ########################################################################
 # Load data
-setwd("C:/aaaWork/Web/GitHub/RCourseIdaho2017")
 pwf <- read.csv("PWF2016.csv")
 str(pwf)
 headtail(pwf)
 levels(pwf$region)
 
 
-# Modifiy data.frame
+# Modify data.frame
 #   Re-order levels of region variable
 #   Add country and length bins variables
 #   Add logs of tl and wt
@@ -74,7 +72,15 @@ alkPlot(USA.alk,type="lines")
 alkPlot(USA.alk,type="bubble")
 
 
-# --- ASSIGNMENT -- Make a similar ALK for Canadian fish ---------------
+# --- NOT DEMONSTRATED -- Make a similar ALK for Canadian fish ---------
+CAN.aged <- filterD(pwf,country=="Canada",!is.na(age))
+head(CAN.aged)
+CAN.raw <- xtabs(~lcat+age,data=CAN.aged)
+addmargins(CAN.raw)
+CAN.alk <- prop.table(CAN.raw,margin=1)
+round(CAN.alk*100,1)
+alkPlot(CAN.alk)
+# --- NOT DEMONSTRATED END ---------------------------------------------
 
 
 
@@ -98,9 +104,18 @@ headtail(USA,n=5)
 rm(USA.aged,USA.unaged,USA.raw)
 
 
-# -- ASSIGNMENT -- Construct data.frame of ALL Canadian fish with ages
 
-# -- ASSIGNMENT -- Construct data.frame of ALL fish with ages
+# -- NOT DEMONSTRATED -- Construct ages for ALL Canadian fish ----------
+CAN.unaged <- filterD(pwf,country=="Canada",is.na(age))
+head(CAN.unaged)
+xtabs(~lcat,data=CAN.unaged)
+CAN.unaged <- alkIndivAge(CAN.alk,age~tl,data=CAN.unaged)
+CAN <- rbind(CAN.aged,CAN.unaged)
+# clean-up temporary, intermediate, or special use objects
+rm(CAN.aged,CAN.unaged,CAN.raw)
+# Construct data.frame of ALL fish with ages
+pwf <- rbind(CAN,USA)
+# --- NOT DEMONSTRATED END ---------------------------------------------------
 
 
 
@@ -121,13 +136,13 @@ str(USA.af)
 plot(logfreq~age,data=USA.af)
 
 # Catch-curve analysis (using "first principles")
-USA.af.gte2 <- filterD(USA.af,age>=2)
-USA.cc1 <- lm(logfreq~age,data=USA.af.gte2)
+USA.af.rec <- filterD(USA.af,age>=2)
+USA.cc1 <- lm(logfreq~age,data=USA.af.rec)
 coef(USA.cc1)
 confint(USA.cc1)
-USA.af.gte2 %<>% mutate(wts=predict(USA.cc1))
-USA.af.gte2
-USA.cc2 <- lm(logfreq~age,data=USA.af.gte2,weights=wts)
+USA.af.rec %<>% mutate(wts=predict(USA.cc1))
+USA.af.rec
+USA.cc2 <- lm(logfreq~age,data=USA.af.rec,weights=wts)
 cbind(Est=coef(USA.cc2),confint(USA.cc2))
 
 # Catch-curve analysis (using convenience function)
@@ -144,7 +159,23 @@ cbind(Est=coef(USA.cr),confint(USA.cr))
 plot(USA.cr)
 
 
-# -- ASSIGNMENT -- Compute Z/A for ALL Canadian fish (use FSA functions)
+# -- NOT DEMONSTRATED -- Compute Z/A for ALL Canadian fish
+CAN.af <- group_by(CAN,age) %>%
+  summarise(freq=n()) %>%
+  mutate(logfreq=log(freq)) %>%
+  as.data.frame()
+CAN.af
+
+plot(logfreq~age,data=CAN.af)
+
+CAN.cc <- catchCurve(freq~age,data=CAN.af,ages2use=2:9,weighted=TRUE)
+cbind(Est=coef(CAN.cc),confint(CAN.cc))
+plot(CAN.cc)
+
+CAN.cr <- chapmanRobson(freq~age,data=CAN.af,ages2use=2:9)
+cbind(Est=coef(CAN.cr),confint(CAN.cr))
+plot(CAN.cr)
+# --- NOT DEMONSTRATED END ---------------------------------------------------
 
 
 
@@ -165,11 +196,11 @@ clrs <- c("black","blue")
 plot(logfreq~age,data=ALL.af,pch=19,col=clrs[as.numeric(country)])
 
 # Fit weighted IVR model to compare slopes
-ALL.af.gte2 <- filterD(ALL.af,age>=2)
-ALL.cc1 <- lm(logfreq~age*country,data=ALL.af.gte2)
-ALL.af.gte2 %<>% mutate(wts=predict(ALL.cc1))
-ALL.af.gte2
-ALL.cc2 <- lm(logfreq~age*country,data=ALL.af.gte2,weights=wts)
+ALL.af.rec <- filterD(ALL.af,age>=2)
+ALL.cc1 <- lm(logfreq~age*country,data=ALL.af.rec)
+ALL.af.rec %<>% mutate(wts=predict(ALL.cc1))
+ALL.af.rec
+ALL.cc2 <- lm(logfreq~age*country,data=ALL.af.rec,weights=wts)
 anova(ALL.cc2)
 cbind(Est=coef(ALL.cc2),confint(ALL.cc2))
 
@@ -185,9 +216,6 @@ tmp <- c(2,7)
 lines(tmp,predict(ALL.cc2,data.frame(age=tmp,country="USA")),
       col=clrs[2],lwd=2)
 legend("topright",levels(pwf$country),col=clrs,pch=19,lwd=2,bty="n")
-
-# clean-up temporary, intermediate, or special use objects
-rm(tmp,ALL.af.gte2,USA.af.gte2,USA.cc1,ALL.cc1)
 
 
 
@@ -244,7 +272,24 @@ plot(tl~age,data=USA,xlab=xlbl,ylab=ylbl,pch=19,col=clrs2[2])
 curve(vb(x,USA.vbc),from=1,to=8,n=500,lwd=2,col=clrs[2],add=TRUE)
 
 
-# - ASSIGNMENT -- Fit "typical" VBGF to ALL Canadian fish --------------
+# - NOT DEMONSTRATED -- Fit "typical" VBGF to ALL Canadian fish --------
+( CAN.vbs <- vbStarts(tl~age,data=CAN,type="Typical",plot=TRUE) )
+
+CAN.vbf <- nls(tl~vb(age,Linf,K,t0),data=CAN,start=CAN.vbs)
+residPlot(CAN.vbf)
+
+summary(CAN.vbf,correlation=TRUE)
+( CAN.vbc <- coef(CAN.vbf) )
+CAN.vbb <- nlsBoot(CAN.vbf,niter=999)
+cbind(EST=CAN.vbc,confint(CAN.vbb))
+
+CAN.vbbp <- apply(CAN.vbb$coefboot,MARGIN=1,FUN=vb,t=ageX)
+c(pred=predict(CAN.vbf,data.frame(age=ageX)),
+  quantile(CAN.vbbp,c(0.025,0.975)))
+
+plot(tl~age,data=CAN,xlab=xlbl,ylab=ylbl,pch=19,col=clrs2[1],ylim=c(20,130))
+curve(vb(x,CAN.vbc),from=1,to=9,n=500,lwd=2,col=clrs[1],add=TRUE)
+# --- NOT DEMONSTRATED END ---------------------------------------------
 
 
 
@@ -265,8 +310,8 @@ residPlot(fitLKt,col=col2rgbt("black",1/3))
 vbOm <- tl~Linf*(1-exp(-K*(age-t0)))
 fitOm <- nls(vbOm,data=pwf,start=svOm)
 
-extraSS(fitOm,com=fitLKt,sim.name="{Omega}",com.name="{Linf,K,t0}")
-lrt(fitOm,com=fitLKt,sim.name="{Omega}",com.name="{Linf,K,t0}")
+extraSS(fitOm,sim.name="{Omega}",com=fitLKt,com.name="{Linf,K,t0}")
+lrt(fitOm,sim.name="{Omega}",com=fitLKt,com.name="{Linf,K,t0}")
 
 vbLK <- tl~Linf[country]*(1-exp(-K[country]*(age-t0)))
 ( svLK <- Map(rep,svOm,c(2,2,1)) )
@@ -277,8 +322,8 @@ fitLt <- nls(vbLt,data=pwf,start=svLt)
 vbKt <- tl~Linf*(1-exp(-K[country]*(age-t0[country])))
 svKt <- Map(rep,svOm,c(1,2,2))
 fitKt <- nls(vbKt,data=pwf,start=svKt)
-extraSS(fitLK,fitLt,fitKt,com=fitLKt,com.name="{Linf,K,t0}",
-        sim.names=c("{Linf,K}","{Linf,t0}","{K,t0}"))
+extraSS(fitLK,fitLt,fitKt,sim.names=c("{Linf,K}","{Linf,t0}","{K,t0}"),
+        com=fitLKt,com.name="{Linf,K,t0}")
 
 vbL <- tl~Linf[country]*(1-exp(-K*(age-t0)))
 ( svL <- Map(rep,svOm,c(2,1,1)) )
@@ -286,7 +331,8 @@ fitL <- nls(vbL,data=pwf,start=svL)
 vbt <- tl~Linf*(1-exp(-K*(age-t0[country])))
 svt <- Map(rep,svOm,c(1,1,2))
 fitt <- nls(vbt,data=pwf,start=svt)
-extraSS(fitL,fitt,com=fitLt,com.name="{Linf,t0}",sim.names=c("{Linf}","{t0}"))
+extraSS(fitL,fitt,sim.names=c("{Linf}","{t0}"),
+        com=fitLt,com.name="{Linf,t0}")
 
 summary(fitLt,correlation=TRUE)
 round(cbind(Est=coef(fitLt),confint(fitLt)),3)
@@ -334,7 +380,20 @@ lines(USA.pwt[,"lwr"]~lens,lwd=2,lty=2,col=clrs[2])
 lines(USA.pwt[,"upr"]~lens,lwd=2,lty=2,col=clrs[2])
 
 
-# - ASSIGNMENT -- Fit weight-length relationship to Canadian fish ------
+# - NOT DEMONSTRATED -- Fit weight-length relationship to Canadian fish
+CAN.lw <- lm(logwt~logtl,data=CAN)
+cbind(Est=coef(CAN.lw),confint(CAN.lw))
+
+lens <- seq(30,150,length.out=100)
+CAN.pwt <- exp(predict(CAN.lw,data.frame(logtl=log(lens)),
+                       interval="prediction"))
+head(CAN.pwt)
+plot(wt~tl,data=CAN,pch=19,col=clrs2[1],
+     xlab="Total Length (mm)",ylab="Weight (g)")
+lines(CAN.pwt[,"fit"]~lens,lwd=2)
+lines(CAN.pwt[,"lwr"]~lens,lwd=2,lty=2)
+lines(CAN.pwt[,"upr"]~lens,lwd=2,lty=2)
+# --- NOT DEMONSTRATED END ---------------------------------------------
 
 
 

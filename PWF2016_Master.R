@@ -35,7 +35,7 @@ tmp %<>% mutate(logtl=log(tl))
 rm(tmp)  # cleanup memory
 # --- DEMO ONLY END ====================================================
 
-# Modifiy data.frame
+# Modify data.frame
 #   Re-order levels of region variable
 #   Add country and length bins variables
 #   Add logs of tl and wt
@@ -224,9 +224,6 @@ tmp <- c(2,7)
 lines(tmp,predict(ALL.cc2,data.frame(age=tmp,country="USA")),
       col=clrs[2],lwd=2)
 legend("topright",levels(pwf$country),col=clrs,pch=19,lwd=2,bty="n")
-
-# clean-up temporary, intermediate, or special use objects
-rm(tmp,ALL.af.rec,USA.af.rec,USA.cc1,ALL.cc1)
 
 
 
