@@ -40,12 +40,14 @@ headtail(wae)
 ```
 
 * Modify the data.frame in the following ways:
-    * Remove the `Lake` and `Assessment` variables (they do not vary and will not be used in any analyses ... this simply simplifies the data.frame),
+    * Remove the `Lake` and `Assessment` variables (they do not vary and will not be used in any analyses ... this simplifies the data.frame),
     * Rename the `inches` and `pounds` variables (to something better),
-    * Change sex codes to words (note that 1=male, 2=female, 3=unknown),
-    * Add 1-in length bins variable,
-    * Add logs of the length and weight variables, and
-    * Sort individuals by year, then age, then length
+    * Change `sex` codes to words (note that 1=male, 2=female, 3=unknown),
+    * Change the new `sex` variable to a factor variable (this is required for later analyses and can be done within `mutate()` as follows ... `sex=factor(sex)`),
+    * Add a 1-in length bins variable,
+    * Add logs of the length and weight variables,
+    * Sort individuals by year, then age, then length, and
+    * Examine the resulting data.frame.
 ```{r}
 wae %<>% select(-Lake,-Assessment) %>%
   rename(len=inches,wt=pounds) %>%
@@ -59,7 +61,7 @@ headtail(wae)
 
 * Produce some simple summaries that could be used to answer the following questions:
     * What is the mean length of all Walleye?
-    * What is the standard deviation of the length of Walleye in each year?
+    * What is the standard deviation of Walleye lengths in each year?
     * How many fish were captured in each year?
     * How many fish of each sex were captured in each year?
     * [*Bonus*] What is the maximum length of Walleye for each sex in each year?
@@ -110,7 +112,7 @@ wae14F.unaged <- filterD(wae,sex=="female",year==2014,is.na(age))
 headtail(wae14F.unaged)
 ```
 
-* Use the age-length key for female Walleye captured in 2014 to assign ages to all fish in this new data.frame.
+* Use the age-length key for female Walleye captured in 2014 (from above) to assign ages to all fish in this new data.frame.
 ```{r}
 wae14F.unaged <- alkIndivAge(wae14F.alk,age~len,data=wae14F.unaged)
 headtail(wae14F.unaged)
@@ -290,7 +292,9 @@ curve(vb(x,wae14M.vbc),from=3,to=15,n=500,
 
 * Repeat the above for female Walleye captured in 2014.
 ```{r fig.width=6}
-wae14F.vbs <- vbStarts(len~age,data=wae14F,type="Typical")
+wae14F.vbs <- vbStarts(len~age,data=wae14F,type="Typical",plot=TRUE)
+wae14F.vbs <- vbStarts(len~age,data=wae14F,type="Typical",
+                       fixed=list(Linf=22,K=0.3,t0=0),plot=TRUE)
 wae14F.vbf <- nls(len~vb(age,Linf,K,t0),data=wae14F,
                   start=wae14F.vbs)
 residPlot(wae14F.vbf)
@@ -461,4 +465,3 @@ lines(m.pwt[,"upr"]~lens,lwd=1,lty=2,col=clrs[2])
 ```{r fig.height=4, fig.width=4}
 lwCompPreds(ALL.lw,lens=c(12,16,20,24))
 ```
-
