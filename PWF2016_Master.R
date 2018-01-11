@@ -7,7 +7,6 @@
 cat("\014")     # or ctrl-L in RStudio
 # Load packages
 library(FSA)
-library(FSAdata)
 library(nlstools)
 library(AICcmodavg)
 library(dplyr)
@@ -20,7 +19,7 @@ library(magrittr)
 ##  Initial Data Wrangling (and Quick Summaries)
 ##
 ########################################################################
-# Load data
+# Load data (need to set the working directory)
 pwf <- read.csv("PWF2016.csv")
 str(pwf)
 headtail(pwf)
@@ -42,7 +41,7 @@ rm(tmp)  # cleanup memory
 #   Remove towID and date variables (for clean-up)
 #   Sort individuals by country, then region, then age, then tl
 pwf %<>% mutate(region=factor(region,levels=c("Ontario-East","Ontario-West",
-                                              "Michigan","Minnesota","Wisconsin")),
+                                              "Michigan","Wisconsin","Minnesota")),
                 country=mapvalues(region,from=levels(region),
                                   to=c("Canada","Canada","USA","USA","USA")),
                 lcat=lencat(tl,w=10),
@@ -71,9 +70,11 @@ USA.aged <- filterD(pwf,country=="USA",!is.na(age))
 headtail(USA.aged)
 # Compute two-way frequency table of length bins (rows) and ages
 USA.raw <- xtabs(~lcat+age,data=USA.aged)
+# Add margins for display only
 addmargins(USA.raw)
 # Compute row proportions table (this is the ALK)
 USA.alk <- prop.table(USA.raw,margin=1)
+# Examine the ALK
 round(USA.alk*100,1)
 alkPlot(USA.alk)
 alkPlot(USA.alk,type="lines")
@@ -154,12 +155,9 @@ USA.cc2 <- lm(logfreq~age,data=USA.af.rec,weights=wts)
 cbind(Est=coef(USA.cc2),confint(USA.cc2))
 
 # Catch-curve analysis (using convenience function)
-USA.cc1 <- catchCurve(freq~age,data=USA.af,ages2use=2:7)
-cbind(Est=coef(USA.cc1),confint(USA.cc1))
-plot(USA.cc1)
-
 USA.cc2 <- catchCurve(freq~age,data=USA.af,ages2use=2:7,weighted=TRUE)
 cbind(Est=coef(USA.cc2),confint(USA.cc2))
+plot(USA.cc2)
 
 # Chapman-Robson analysis (using convenience function)
 USA.cr <- chapmanRobson(freq~age,data=USA.af,ages2use=2:7)
@@ -355,7 +353,8 @@ svK <- Map(rep,svOm,c(1,2,1))
 fitK <- nls(vbK,data=pwf,start=svK)
 
 ms <- list(fitOm,fitL,fitK,fitt,fitLK,fitLt,fitKt,fitLKt)
-mnames <- c("{Omega}","{Linf}","{K}","{t0}","{Linf,K}","{Linf,t0}","{K,t0}","{Linf,K,t0}")
+mnames <- c("{Omega}","{Linf}","{K}","{t0}","{Linf,K}",
+            "{Linf,t0}","{K,t0}","{Linf,K,t0}")
 aictab(ms,mnames)
 
 ( cfLt <- coef(fitLt) )
