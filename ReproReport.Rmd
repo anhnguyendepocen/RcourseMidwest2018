@@ -7,7 +7,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-YEAR <- 2014
+YEAR <- 2012
 knitr::knit_hooks$set(par1 = function(before, options, envir) {
   if (before) par(mar=c(3.5,3.5,1,1),mgp=c(2.1,0.4,0),tcl=-0.2)
 })
@@ -40,7 +40,7 @@ rcum <- rcumsum(xtabs(~lcat,data=wae))
 rcump <- rcum/ttl*100
 ```
 
-A total of `r ttl` Walleye were captured in `r YEAR`, including `r sex[["female"]]` female, `r sex[["male"]]` male, and `r sex[["unknown"]]` unknown sex individuals. The length distribution was right skewed (`r figs("Histogram",display="cite")`) with a mean length of `r formatC(slen[["mean"]],format="f",digits=1)` inches, `r formatC(rcump[["14"]],format="f",digits=1)`% 14 inches or larger, and `r formatC(rcump[["20"]],format="f",digits=1)`% 20 inches or larger.
+A total of `r ttl` Walleye were captured in `r YEAR`, including `r sex[["female"]]` female, `r sex[["male"]]` male, and `r sex[["unknown"]]` unknown sex individuals. The length distribution was right skewed (`r figs("Histogram",display="cite")`) with a mean length of `r formatC(slen[["mean"]],format="f",digits=1)` inches with `r formatC(rcump[["14"]],format="f",digits=1)`% of fish 14 inches or larger and `r formatC(rcump[["20"]],format="f",digits=1)`% of fish 20 inches or larger.
 
 ```{r results='hide'}
 figs(name="Histogram",paste0("Length frequency histogram for Walleye captured from Escanaba Lake in ",YEAR,"."))
