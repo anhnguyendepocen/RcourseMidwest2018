@@ -24,4 +24,5 @@ This one-day workshop is for those interested in expanding their R skills to est
 
 ## Post-Workshop Follow-up
 * Please complete [this survey](https://goo.gl/forms/rNZ2lIEZFzkCW6WO2) regarding this workshop.
+* [Here is the answer key to the Escanaba Walleye exercises.](WAE_Escanaba_KEY.pdf)
 * If you have any questions please feel free to [contact me](mailto:derek@derekogle.com).
